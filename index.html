@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101d26">
+  <title>The Lord</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; background: #080f14; color: #e3e8dd; font: 14px system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; overflow: hidden; }
+    main { flex: 1; min-height: 0; display: grid; place-items: center; }
+    #stage { position: relative; width: min(100vw, calc((100dvh - 40px) * 1.6)); aspect-ratio: 8 / 5; background: #101d26; }
+    canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; }
+    #loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 20px; text-align: center; background: #101d26; }
+    #loading[hidden] { display: none; }
+    #loading strong { color: #e6c581; font-size: 32px; letter-spacing: .12em; }
+    progress { width: 240px; height: 8px; accent-color: #76c7b8; }
+    #message { color: #9eb0af; max-width: 320px; line-height: 1.6; }
+    footer { height: 40px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid #273b43; color: #9eb0af; }
+    footer span { color: #e6c581; letter-spacing: .12em; }
+    button { background: transparent; color: #e3e8dd; border: 1px solid #3b5157; padding: 4px 12px; cursor: pointer; font: inherit; }
+    button:disabled { opacity: .4; cursor: default; }
+    button:hover:not(:disabled) { border-color: #e6c581; }
+  </style>
+</head>
+<body>
+  <main>
+    <div id="stage">
+      <canvas id="unity-canvas" width="1280" height="800" tabindex="0" aria-label="The Lord 게임 화면"></canvas>
+      <div id="loading" role="status" aria-live="polite">
+        <strong>THE LORD</strong>
+        <progress id="progress" max="1" value="0" aria-label="게임 불러오기"></progress>
+        <div id="message">게임을 불러오는 중입니다.</div>
+      </div>
+    </div>
+  </main>
+  <footer><span>THE LORD</span><button id="fullscreen" type="button" disabled>전체 화면</button></footer>
+  <script src="Build/WebGL.loader.js"></script>
+  <script>
+    const canvas = document.getElementById('unity-canvas');
+    const loading = document.getElementById('loading');
+    const progress = document.getElementById('progress');
+    const message = document.getElementById('message');
+    const fullscreen = document.getElementById('fullscreen');
+    function failed(error) {
+      console.error(error);
+      loading.hidden = false;
+      progress.hidden = true;
+      message.textContent = '게임을 불러오지 못했습니다. 새로고침해 주세요.';
+    }
+    if (typeof createUnityInstance !== 'function') {
+      failed('Unity loader was not loaded. Serve the whole build folder over HTTP.');
+    } else {
+      createUnityInstance(canvas, {
+        arguments: [],
+        dataUrl: 'Build/WebGL.data.unityweb',
+        frameworkUrl: 'Build/WebGL.framework.js.unityweb',
+        codeUrl: 'Build/WebGL.wasm.unityweb',
+        streamingAssetsUrl: 'StreamingAssets',
+        companyName: "DefaultCompany",
+        productName: "The Lord",
+        productVersion: "0.1.0",
+        devicePixelRatio: 1,
+        showBanner: (text, type) => { if (type === 'error') failed(text); else console.warn(text); }
+      }, value => { progress.value = value; }).then(instance => {
+        loading.hidden = true;
+        fullscreen.disabled = false;
+        fullscreen.addEventListener('click', () => instance.SetFullscreen(1));
+        canvas.focus();
+      }).catch(failed);
+    }
+  </script>
+</body>
+</html>
