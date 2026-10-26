@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101d26">
   <title>The Lord</title>
   <style>
@@ -11,8 +11,12 @@
     body { display: flex; flex-direction: column; overflow: hidden; }
     main { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
     main:fullscreen { width: 100vw; height: 100dvh; background: #080f14; }
+    main.is-expanded { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 10; background: #080f14; }
     #stage { position: absolute; width: 1280px; height: 720px; background: #101d26; }
-    canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; }
+    canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; touch-action: none; }
+    #exit-fullscreen { position: absolute; right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); z-index: 2; width: 44px; height: 44px; background: #101d26dd; font-size: 22px; }
+    #rotate-hint { position: absolute; left: 50%; bottom: max(64px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 2; width: max-content; max-width: 90%; padding: 12px 16px; border: 1px solid #3b5157; background: #101d26ee; text-align: center; line-height: 1.5; pointer-events: none; }
+    #exit-fullscreen[hidden], #rotate-hint[hidden] { display: none; }
     #loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 20px; text-align: center; background: #101d26; }
     #loading[hidden] { display: none; }
     #loading strong { color: #e6c581; font-size: 32px; letter-spacing: .12em; }
@@ -35,6 +39,8 @@
         <div id="message">게임을 불러오는 중입니다.</div>
       </div>
     </div>
+    <button id="exit-fullscreen" type="button" hidden aria-label="전체 화면 해제" title="전체 화면 해제">×</button>
+    <div id="rotate-hint" role="status" hidden>휴대폰을 가로로 돌려서 플레이해 주세요.</div>
   </main>
   <footer><span>THE LORD</span><button id="fullscreen" type="button" disabled>전체 화면</button></footer>
   <script src="Build/WebGL.loader.js"></script>
@@ -46,20 +52,80 @@
     const fullscreen = document.getElementById('fullscreen');
     const view = document.getElementById('game-view');
     const stage = document.getElementById('stage');
+    const exitFullscreen = document.getElementById('exit-fullscreen');
+    const rotateHint = document.getElementById('rotate-hint');
     const gameWidth = canvas.width;
     const gameHeight = canvas.height;
+    let expanded = false;
+    function isFullscreen() {
+      return expanded || (document.fullscreenElement || document.webkitFullscreenElement) === view;
+    }
+    function updateRotateHint() {
+      rotateHint.hidden = !(isFullscreen() && matchMedia('(pointer: coarse)').matches && view.clientHeight > view.clientWidth);
+    }
     // Normal pages never scale the game. Only fullscreen fits it to the available display.
     function fitStage() {
-      const isFullscreen = document.fullscreenElement === view;
-      const width = isFullscreen ? Math.min(view.clientWidth, view.clientHeight * gameWidth / gameHeight) : gameWidth;
+      const active = isFullscreen();
+      const width = active ? Math.min(view.clientWidth, view.clientHeight * gameWidth / gameHeight) : gameWidth;
       const height = width * gameHeight / gameWidth;
       stage.style.width = width + 'px';
       stage.style.height = height + 'px';
       stage.style.left = Math.max(0, (view.clientWidth - width) / 2) + 'px';
       stage.style.top = Math.max(0, (view.clientHeight - height) / 2) + 'px';
+      exitFullscreen.hidden = !active;
+      updateRotateHint();
+    }
+    function unlockOrientation() {
+      try { screen.orientation?.unlock?.(); } catch (error) { console.info('Orientation unlock unavailable:', error.name); }
+    }
+    async function enterFullscreen() {
+      const request = view.requestFullscreen || view.webkitRequestFullscreen;
+      let nativeFullscreen = false;
+      if (request) {
+        try {
+          await request.call(view, { navigationUI: 'hide' });
+          nativeFullscreen = (document.fullscreenElement || document.webkitFullscreenElement) === view;
+        } catch (error) { console.info('Using expanded game view:', error.name); }
+      }
+      // Browsers without element fullscreen can still play in a fitted, page-filling view.
+      if (!nativeFullscreen) {
+        expanded = true;
+        view.classList.add('is-expanded');
+      }
+      fitStage();
+      try {
+        if (isFullscreen() && screen.orientation?.lock) {
+          await screen.orientation.lock('landscape');
+          if (!isFullscreen()) unlockOrientation();
+        }
+      } catch (error) { console.info('Landscape lock unavailable:', error.name); }
+      fitStage();
+      canvas.focus();
+    }
+    async function leaveFullscreen() {
+      expanded = false;
+      view.classList.remove('is-expanded');
+      unlockOrientation();
+      const leave = document.exitFullscreen || document.webkitExitFullscreen;
+      if (leave && (document.fullscreenElement || document.webkitFullscreenElement) === view) {
+        try { await leave.call(document); } catch (error) { console.warn('Fullscreen exit failed:', error); }
+      }
+      fitStage();
+      canvas.focus();
+    }
+    function fullscreenChanged() {
+      if (!isFullscreen()) unlockOrientation();
+      fitStage();
     }
     new ResizeObserver(fitStage).observe(view);
-    document.addEventListener('fullscreenchange', fitStage);
+    document.addEventListener('fullscreenchange', fullscreenChanged);
+    document.addEventListener('webkitfullscreenchange', fullscreenChanged);
+    screen.orientation?.addEventListener?.('change', fitStage);
+    window.visualViewport?.addEventListener('resize', fitStage);
+    exitFullscreen.addEventListener('click', leaveFullscreen);
+    document.addEventListener('keydown', event => {
+      if (expanded && event.key === 'Escape') { leaveFullscreen(); event.preventDefault(); }
+    });
     fitStage();
     function failed(error) {
       console.error(error);
@@ -84,10 +150,8 @@
         showBanner: (text, type) => { if (type === 'error') failed(text); else console.warn(text); }
       }, value => { progress.value = value; }).then(instance => {
         loading.hidden = true;
-        fullscreen.disabled = !view.requestFullscreen;
-        fullscreen.addEventListener('click', () => {
-          view.requestFullscreen().catch(error => console.warn('Fullscreen request failed:', error));
-        });
+        fullscreen.disabled = false;
+        fullscreen.addEventListener('click', enterFullscreen);
         canvas.focus();
       }).catch(failed);
     }
