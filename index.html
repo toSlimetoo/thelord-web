@@ -10,7 +10,8 @@
     html, body { margin: 0; width: 100%; height: 100%; background: #080f14; color: #e3e8dd; font: 14px system-ui, sans-serif; }
     body { display: flex; flex-direction: column; overflow: hidden; }
     main { flex: 1; min-height: 0; display: grid; place-items: center; }
-    #stage { position: relative; width: min(100vw, calc((100dvh - 40px) * 1.6)); aspect-ratio: 8 / 5; background: #101d26; }
+    main:fullscreen { width: 100vw; height: 100dvh; background: #080f14; }
+    #stage { position: relative; width: 1280px; max-width: 100%; aspect-ratio: 16 / 9; background: #101d26; }
     canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; }
     #loading { position: absolute; inset: 0; display: grid; place-content: center; gap: 20px; text-align: center; background: #101d26; }
     #loading[hidden] { display: none; }
@@ -25,9 +26,9 @@
   </style>
 </head>
 <body>
-  <main>
+  <main id="game-view">
     <div id="stage">
-      <canvas id="unity-canvas" width="1280" height="800" tabindex="0" aria-label="The Lord 게임 화면"></canvas>
+      <canvas id="unity-canvas" width="1280" height="720" tabindex="0" aria-label="The Lord 게임 화면"></canvas>
       <div id="loading" role="status" aria-live="polite">
         <strong>THE LORD</strong>
         <progress id="progress" max="1" value="0" aria-label="게임 불러오기"></progress>
@@ -43,6 +44,18 @@
     const progress = document.getElementById('progress');
     const message = document.getElementById('message');
     const fullscreen = document.getElementById('fullscreen');
+    const view = document.getElementById('game-view');
+    const stage = document.getElementById('stage');
+    // Resize only the presentation. Unity always renders and receives input at 1280 x 720.
+    function fitStage() {
+      const maxWidth = document.fullscreenElement === view ? Infinity : 1280;
+      const width = Math.max(0, Math.min(maxWidth, view.clientWidth, view.clientHeight * 16 / 9));
+      stage.style.width = width + 'px';
+      stage.style.height = width * 9 / 16 + 'px';
+    }
+    new ResizeObserver(fitStage).observe(view);
+    document.addEventListener('fullscreenchange', fitStage);
+    fitStage();
     function failed(error) {
       console.error(error);
       loading.hidden = false;
@@ -62,11 +75,14 @@
         productName: "The Lord",
         productVersion: "0.1.0",
         devicePixelRatio: 1,
+        matchWebGLToCanvasSize: false,
         showBanner: (text, type) => { if (type === 'error') failed(text); else console.warn(text); }
       }, value => { progress.value = value; }).then(instance => {
         loading.hidden = true;
-        fullscreen.disabled = false;
-        fullscreen.addEventListener('click', () => instance.SetFullscreen(1));
+        fullscreen.disabled = !view.requestFullscreen;
+        fullscreen.addEventListener('click', () => {
+          view.requestFullscreen().catch(error => console.warn('Fullscreen request failed:', error));
+        });
         canvas.focus();
       }).catch(failed);
     }
