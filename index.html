@@ -7,12 +7,13 @@
   <title>The Lord</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; background: #080f14; color: #e3e8dd; font: 14px system-ui, sans-serif; }
+    html, body { margin: 0; width: 100%; height: 100%; background: #080f14; color: #f0f2e9; font: 14px system-ui, sans-serif; }
+    body { height: 100dvh; }
     body { display: flex; flex-direction: column; overflow: hidden; }
     main { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
     main:fullscreen { width: 100vw; height: 100dvh; background: #080f14; }
     main.is-expanded { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 10; background: #080f14; }
-    #stage { position: absolute; width: 1280px; height: 720px; background: #101d26; }
+    #stage { position: absolute; background: #101d26; }
     canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; touch-action: none; }
     #view-controls { position: absolute; right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); z-index: 2; display: flex; flex-direction: row; align-items: flex-end; gap: 12px; }
     #view-controls button { display: grid; place-items: center; width: 36px; min-width: 36px; height: 36px; padding: 0; background: #101d26dd; font-size: 20px; }
@@ -22,7 +23,14 @@
     #loading strong { color: #e6c581; font-size: 32px; letter-spacing: .12em; }
     progress { width: 240px; height: 8px; accent-color: #76c7b8; }
     #message { color: #9eb0af; max-width: 320px; line-height: 1.6; }
-    footer { height: 40px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid #273b43; color: #9eb0af; }
+    footer { min-height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px max(12px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); border-top: 1px solid #273b43; color: #bbc9c5; }
+    footer small { font-size: 12px; line-height: 1.5; }
+    footer button { min-height: 36px; flex-shrink: 0; }
+    @media (max-width: 600px) and (orientation: portrait) {
+      footer { flex-wrap: wrap; }
+      footer small { order: 3; width: 100%; text-align: center; }
+      footer small::before { content: '가로 화면을 권장합니다. '; }
+    }
     footer span { color: #e6c581; letter-spacing: .12em; }
     button { background: transparent; color: #e3e8dd; border: 1px solid #3b5157; padding: 4px 12px; cursor: pointer; font: inherit; }
     button:disabled { opacity: .4; cursor: default; }
@@ -44,7 +52,7 @@
       <button id="exit-fullscreen" type="button" aria-label="전체 화면 해제" title="전체 화면 해제">×</button>
     </div>
   </main>
-  <footer><span>THE LORD</span><button id="fullscreen" type="button" disabled>전체 화면</button></footer>
+  <footer><span>THE LORD</span><small>작은 글자는 길게 눌러 크게 볼 수 있습니다.</small><button id="fullscreen" type="button" disabled>전체 화면</button></footer>
   <script src="Build/WebGL.loader.js"></script>
   <script>
     const canvas = document.getElementById('unity-canvas');
@@ -70,22 +78,29 @@
       quarterTurns = (turns + 4) % 4;
       gameInstance?.SendMessage('TheLordWebDisplay', 'SetRotation', quarterTurns);
       const sideways = quarterTurns % 2 !== 0;
-      canvas.width = sideways ? gameHeight : gameWidth;
-      canvas.height = sideways ? gameWidth : gameHeight;
       view.dataset.rotation = quarterTurns * 90;
       rotateScreen.setAttribute('aria-label', '화면을 90도 회전, 현재 ' + quarterTurns * 90 + '도');
     }
-    // Normal pages never scale the game. Only fullscreen fits it to the available display.
+    // Fit both page and fullscreen views. Rasterize at the displayed size so the
+    // browser never downsamples a reference-resolution bitmap font.
     function fitStage() {
       const active = isFullscreen();
       if (!active && quarterTurns !== 0) applyRotation(0);
-      const aspect = canvas.width / canvas.height;
-      const width = active ? Math.min(view.clientWidth, view.clientHeight * aspect) : gameWidth;
+      const sideways = quarterTurns % 2 !== 0;
+      const aspect = sideways ? gameHeight / gameWidth : gameWidth / gameHeight;
+      const safe = getComputedStyle(view);
+      const availableWidth = Math.max(1, view.clientWidth - parseFloat(safe.paddingLeft) - parseFloat(safe.paddingRight));
+      const availableHeight = Math.max(1, view.clientHeight - parseFloat(safe.paddingTop) - parseFloat(safe.paddingBottom));
+      const width = Math.min(availableWidth, availableHeight * aspect, active ? Infinity : gameWidth);
       const height = width / aspect;
-      stage.style.width = width + 'px';
-      stage.style.height = height + 'px';
-      stage.style.left = Math.max(0, (view.clientWidth - width) / 2) + 'px';
-      stage.style.top = Math.max(0, (view.clientHeight - height) / 2) + 'px';
+      const renderWidth = Math.max(1, Math.round(width));
+      const renderHeight = Math.max(1, Math.round(height));
+      stage.style.width = renderWidth + 'px';
+      stage.style.height = renderHeight + 'px';
+      stage.style.left = Math.max(0, Math.floor((view.clientWidth - renderWidth) / 2)) + 'px';
+      stage.style.top = Math.max(0, Math.floor((view.clientHeight - renderHeight) / 2)) + 'px';
+      if (canvas.width !== renderWidth) canvas.width = renderWidth;
+      if (canvas.height !== renderHeight) canvas.height = renderHeight;
       viewControls.hidden = !active;
     }
     async function enterFullscreen() {
