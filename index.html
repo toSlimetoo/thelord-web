@@ -15,6 +15,11 @@
     main.is-expanded { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 10; background: #080f14; }
     #stage { position: absolute; background: #101d26; }
     canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; touch-action: none; }
+    body[data-input="touch"] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    body[data-input="touch"] button { min-height: 44px; touch-action: manipulation; }
+    main[data-input="touch"]:fullscreen, main[data-input="touch"].is-expanded { padding-top: calc(56px + env(safe-area-inset-top)); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); padding-bottom: env(safe-area-inset-bottom); }
+    main[data-input="touch"] #view-controls { top: max(8px, env(safe-area-inset-top)); bottom: auto; }
+    main[data-input="touch"] #view-controls button { width: 44px; min-width: 44px; height: 44px; }
     #view-controls { position: absolute; right: max(8px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); z-index: 2; display: flex; flex-direction: row; align-items: flex-end; gap: 12px; }
     #view-controls button { display: grid; place-items: center; width: 36px; min-width: 36px; height: 36px; padding: 0; background: #101d26dd; font-size: 20px; }
     #view-controls[hidden] { display: none; }
@@ -71,6 +76,26 @@
     let quarterTurns = 0;
     let gameInstance;
     let displayReady = false;
+    const primaryPointer = matchMedia('(pointer: coarse)');
+    let touchMode = primaryPointer.matches;
+    function syncInputMode(enabled) {
+      touchMode = enabled;
+      document.body.dataset.input = view.dataset.input = enabled ? 'touch' : 'mouse';
+      if (gameInstance && displayReady) gameInstance.SendMessage('TheLordWebDisplay', 'SetTouchMode', enabled ? 1 : 0);
+      fitStage();
+    }
+    primaryPointer.addEventListener('change', event => syncInputMode(event.matches));
+    window.addEventListener('pointerdown', event => {
+      const touch = event.pointerType === 'touch' || event.pointerType === 'pen';
+      if (touch !== touchMode) syncInputMode(touch);
+    }, { capture: true });
+    function cancelTouchInput() {
+      if (gameInstance && displayReady) gameInstance.SendMessage('TheLordWebDisplay', 'CancelTouchInput');
+    }
+    canvas.addEventListener('touchcancel', cancelTouchInput);
+    canvas.addEventListener('contextmenu', event => event.preventDefault());
+    window.addEventListener('blur', cancelTouchInput);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) cancelTouchInput(); });
     function isFullscreen() {
       return expanded || (document.fullscreenElement || document.webkitFullscreenElement) === view;
     }
@@ -97,8 +122,8 @@
       const renderHeight = Math.max(1, Math.round(height));
       stage.style.width = renderWidth + 'px';
       stage.style.height = renderHeight + 'px';
-      stage.style.left = Math.max(0, Math.floor((view.clientWidth - renderWidth) / 2)) + 'px';
-      stage.style.top = Math.max(0, Math.floor((view.clientHeight - renderHeight) / 2)) + 'px';
+      stage.style.left = (parseFloat(safe.paddingLeft) + Math.max(0, Math.floor((availableWidth - renderWidth) / 2))) + 'px';
+      stage.style.top = (parseFloat(safe.paddingTop) + Math.max(0, Math.floor((availableHeight - renderHeight) / 2))) + 'px';
       if (canvas.width !== renderWidth) canvas.width = renderWidth;
       if (canvas.height !== renderHeight) canvas.height = renderHeight;
       viewControls.hidden = !active;
@@ -148,11 +173,12 @@
     window.addEventListener('lord-display-ready', () => {
       displayReady = true;
       rotateScreen.disabled = !gameInstance;
+      syncInputMode(touchMode);
     });
     document.addEventListener('keydown', event => {
       if (expanded && event.key === 'Escape') { leaveFullscreen(); event.preventDefault(); }
     });
-    fitStage();
+    syncInputMode(touchMode);
     function failed(error) {
       console.error(error);
       loading.hidden = false;
@@ -176,6 +202,7 @@
         showBanner: (text, type) => { if (type === 'error') failed(text); else console.warn(text); }
       }, value => { progress.value = value; }).then(instance => {
         gameInstance = instance;
+        syncInputMode(touchMode);
         rotateScreen.disabled = !displayReady;
         loading.hidden = true;
         fullscreen.disabled = false;
