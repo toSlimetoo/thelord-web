@@ -118,6 +118,11 @@
       const height = width / aspect;
       const renderWidth = sideways ? gameHeight : gameWidth;
       const renderHeight = sideways ? gameWidth : gameHeight;
+      // Nearest-neighbor downscaling drops thin Hangul strokes. Keep crisp dots
+      // at integer physical-pixel scales, and smooth only fractional scaling.
+      const physicalScale = width * (window.devicePixelRatio || 1) / renderWidth;
+      const integerScale = physicalScale >= 1 && Math.abs(physicalScale - Math.round(physicalScale)) < .001;
+      canvas.style.imageRendering = integerScale ? 'pixelated' : 'auto';
       stage.style.width = width + 'px';
       stage.style.height = height + 'px';
       stage.style.left = (parseFloat(safe.paddingLeft) + Math.max(0, Math.floor((availableWidth - width) / 2))) + 'px';
@@ -157,6 +162,7 @@
       fitStage();
     }
     new ResizeObserver(fitStage).observe(view);
+    window.addEventListener('resize', fitStage);
     document.addEventListener('fullscreenchange', fullscreenChanged);
     document.addEventListener('webkitfullscreenchange', fullscreenChanged);
     screen.orientation?.addEventListener?.('change', fitStage);
